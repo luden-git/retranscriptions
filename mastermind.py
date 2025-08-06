@@ -43,21 +43,20 @@ def _make_test_payload(kind: str) -> dict:
         "capsule": ("capsule", "Capsule vidéo sur le site de la faculté"),
     }
     value_id, label = mapping[kind]
-    return {
-        "data": {
-            "fields": [
-                {"key": "question_gdaklO", "value": "Test Faculty"},
-                {"key": "question_y2MdQg", "value": "Test Class"},
-                {"key": "question_0BdD9y", "value": 1},
-                {"key": "question_a59ab9", "value": "Test Chapter"},
-                {
-                    "label": "Type de cours ?",
-                    "value": [value_id],
-                    "options": [{"id": value_id, "text": label}],
-                },
-            ]
-        }
-    }
+    fields = [
+        {"key": "question_gdaklO", "value": "Test Faculty"},
+        {"key": "question_y2MdQg", "value": "Test Class"},
+        {"key": "question_0BdD9y", "value": 1},
+        {"key": "question_a59ab9", "value": "Test Chapter"},
+        {
+            "label": "Type de cours ?",
+            "value": [value_id],
+            "options": [{"id": value_id, "text": label}],
+        },
+    ]
+    if kind == "video":
+        fields.append({"label": "Lien Zoom", "value": "https://zoom.example.com/j/123"})
+    return {"data": {"fields": fields}}
 
 
 def main() -> None:
@@ -129,22 +128,34 @@ def main() -> None:
     if not type_text:
         raise ValueError("Invalid \u201cType de cours ?\u201d field")
     type_text = type_text.strip()
+    type_text = type_text.encode("latin-1").decode("utf-8")
 
-    if type_text == "Pr\u00e9sentiel (fichier audio)":
-        script = "rt_audio.py"
-    elif type_text == "Distanciel (fichier vid\u00e9o)":
-        script = "zoom.py"
-    elif type_text == "Capsule vid\u00e9o sur le site de la facult\u00e9":
-        script = "download.py"
+    if "présentiel" in type_text.lower():
+        target = BASE_DIR / "rt_audio.py"
+        cmd = [sys.executable, str(target)]
+        input_bytes = json.dumps(payload).encode()
+    elif "distanciel" in type_text.lower():
+        target = BASE_DIR / "zoom.py"
+        zoom_field = _find_field(
+            fields,
+            lambda f: "zoom" in (f.get("label") or "").lower() and f.get("value"),
+        )
+        if not zoom_field:
+            raise ValueError("Missing Zoom URL for distance course")
+        zoom_url = zoom_field.get("value")
+        cmd = [sys.executable, str(target), "--url", str(zoom_url)]
+        input_bytes = None
+    elif "capsule" in type_text.lower():
+        target = BASE_DIR / "download.py"
+        cmd = [sys.executable, str(target)]
+        input_bytes = json.dumps(payload).encode()
     else:
+        print("DEBUG type_text repr:", repr(type_text))
+        for idx, ch in enumerate(type_text):
+            print(f"  {idx:02d}: {repr(ch):>8}   U+{ord(ch):04X}")
         raise ValueError(f"Unknown course type: {type_text}")
 
-    target = BASE_DIR / script
-    subprocess.run(
-        [sys.executable, str(target)],
-        input=json.dumps(payload).encode(),
-        check=True,
-    )
+    subprocess.run(cmd, input=input_bytes, check=True)
 
 
 if __name__ == "__main__":

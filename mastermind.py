@@ -56,6 +56,8 @@ def _make_test_payload(kind: str) -> dict:
     ]
     if kind == "video":
         fields.append({"label": "Lien Zoom", "value": "https://zoom.example.com/j/123"})
+    elif kind == "capsule":
+        fields.append({"label": "Lien Capsule", "value": "https://video.example.edu/intro.mp4"})
     return {"data": {"fields": fields}}
 
 
@@ -147,8 +149,19 @@ def main() -> None:
         input_bytes = None
     elif "capsule" in type_text.lower():
         target = BASE_DIR / "download.py"
-        cmd = [sys.executable, str(target)]
-        input_bytes = json.dumps(payload).encode()
+        cap_field = _find_field(
+            fields,
+            lambda f: (
+                isinstance(f.get("value"), str)
+                and f.get("value").startswith("http")
+                and ("lien" in (f.get("label") or "").lower() or "url" in (f.get("label") or "").lower())
+            ),
+        )
+        if not cap_field:
+            raise ValueError("Missing video URL for capsule download")
+        video_url = cap_field.get("value")
+        cmd = [sys.executable, str(target), "--url", str(video_url)]
+        input_bytes = None
     else:
         print("DEBUG type_text repr:", repr(type_text))
         for idx, ch in enumerate(type_text):
